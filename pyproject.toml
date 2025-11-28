@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toolbox"
-version = "0.0.1"
+version = "0.0.2-rabbitmq"
 description = "ABT's common tools"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -13,5 +13,5 @@ authors = [
 ]
 license = {text = "Apache 2.0"}
 dependencies = [
-
+    "pika"
 ]
