@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "toolbox"
+name = "toolbox_logs"
 version = "0.0.1"
 description = "ABT's common tools"
 readme = "README.md"
