@@ -6,6 +6,7 @@ import logging
 import threading
 from functools import partial
 
+
 class RabbitBase:
     def __init__(self, logger: logging.Logger, uri: str):
         self.l = logger
@@ -19,13 +20,12 @@ class RabbitBase:
 
     def _ensure_connected(self):
         if (
-            self.connection is None
-            or self.connection.is_closed
-            or self.channel is None
-            or self.channel.is_closed
+                self.connection is None
+                or self.connection.is_closed
+                or self.channel is None
+                or self.channel.is_closed
         ):
             self.connect()
-
 
 
 class RabbitProducer(RabbitBase):
@@ -87,29 +87,40 @@ class RabbitProducer(RabbitBase):
                     self.l.error(f"Retry failed: {e2}")
                     return False
 
+
 class RabbitConsumer(RabbitBase):
-    def __init__(self, logger: logging.Logger, uri: str, queue: str):
+    def __init__(self, logger: logging.Logger, uri: str, queue: str, heartbeat_interval: 5):
         super().__init__(logger, uri)
         self.queue = queue
         self._lock = threading.Lock()
 
+        self.heartbeat_interval = heartbeat_interval
+        self._stop_heartbeat = threading.Event()
+
     def consume(self, callback_func):
-        with self._lock:
-            try:
-                self._ensure_connected()
-                self.channel.basic_consume(
-                    queue=self.queue,
-                    on_message_callback=partial(self._track_callback,callback_func=callback_func),
-                    auto_ack=False,
-                )
-                self.channel.start_consuming()
-            except pika.exceptions.AMQPConnectionError as e:
-                self.l.error(f"AMQP connection failed: {e}")
-                self.connect()
-                return self.consume(callback_func)
-            except Exception as e2:
-                self.l.error(f"Unexpected error consuming from RabbitMQ: {e2}")
-                raise
+
+        heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        heartbeat_thread.start()
+
+        while True:
+            with self._lock:
+                try:
+                    self._ensure_connected()
+                    self.channel.basic_consume(
+                        queue=self.queue,
+                        on_message_callback=partial(self._track_callback, callback_func=callback_func),
+                        auto_ack=False,
+                    )
+                    self.channel.start_consuming()
+                except pika.exceptions.AMQPConnectionError as e:
+                    self.l.error(f"AMQP connection failed: {e}")
+                    self.connect()
+                    continue
+                except Exception as e2:
+                    self.l.error(f"Unexpected error consuming from RabbitMQ: {e2}")
+                    raise
+                finally:
+                    self._stop_heartbeat.set()
 
     def connect(self, delay_seconds: int = 3):
         while True:
@@ -118,10 +129,9 @@ class RabbitConsumer(RabbitBase):
 
                 self.connection = pika.BlockingConnection(self.parameters)
                 self.channel = self.connection.channel()
+                self.channel.basic_qos(prefetch_count=1)
 
-                self.l.info(
-                    f"Successfully connected consumer"
-                )
+                self.l.info(f"Successfully connected consumer")
                 return
 
             except Exception as e:
@@ -137,4 +147,11 @@ class RabbitConsumer(RabbitBase):
         except Exception as e:
             self.l.error(f"Error while processing RabbitMQ message: {e}")
 
-
+    def _heartbeat_loop(self):
+        while not self._stop_heartbeat.is_set():
+            try:
+                if self.connection and self.connection.is_open:
+                    pass
+            except Exception as e:
+                self.l.error(f"RabbitMQ heartbeat thread error: {e}")
+            time.sleep(self.heartbeat_interval)
