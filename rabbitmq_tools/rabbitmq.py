@@ -89,7 +89,7 @@ class RabbitProducer(RabbitBase):
 
 
 class RabbitConsumer(RabbitBase):
-    def __init__(self, logger: logging.Logger, uri: str, queue: str, heartbeat_interval: 5):
+    def __init__(self, logger: logging.Logger, uri: str, queue: str, heartbeat_interval: int = 5):
         super().__init__(logger, uri)
         self.queue = queue
         self._lock = threading.Lock()
