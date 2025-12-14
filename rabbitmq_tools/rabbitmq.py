@@ -97,7 +97,7 @@ class RabbitConsumer(RabbitBase):
         self.heartbeat_interval = heartbeat_interval
         self._stop_heartbeat = threading.Event()
 
-    def consume(self, callback_func):
+    def consume(self, callback_func, extra_func=None):
 
         heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         heartbeat_thread.start()
@@ -108,7 +108,11 @@ class RabbitConsumer(RabbitBase):
                     self._ensure_connected()
                     self.channel.basic_consume(
                         queue=self.queue,
-                        on_message_callback=partial(self._track_callback, callback_func=callback_func),
+                        on_message_callback=partial(
+                            self._track_callback,
+                            callback_func=callback_func,
+                            extra_func=extra_func
+                        ),
                         auto_ack=False,
                     )
                     self.channel.start_consuming()
@@ -143,7 +147,7 @@ class RabbitConsumer(RabbitBase):
         self.l.debug(f"Message received from RabbitMQ queue {self.queue}")
         try:
             result = callback_func(body)
-            if extra_func:
+            if extra_func is not None:
                 extra_func(result)
             channel.basic_ack(delivery_tag=method.delivery_tag)
         except Exception as e:
