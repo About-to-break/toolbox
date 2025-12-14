@@ -139,10 +139,12 @@ class RabbitConsumer(RabbitBase):
                 self.l.info(f"Retrying in {delay_seconds} seconds...")
                 time.sleep(delay_seconds)
 
-    def _track_callback(self, channel, method, properties, body, callback_func):
+    def _track_callback(self, channel, method, properties, body, callback_func, extra_func=None):
         self.l.debug(f"Message received from RabbitMQ queue {self.queue}")
         try:
-            callback_func(body)
+            result = callback_func(body)
+            if extra_func:
+                extra_func(result)
             channel.basic_ack(delivery_tag=method.delivery_tag)
         except Exception as e:
             self.l.error(f"Error while processing RabbitMQ message: {e}")
