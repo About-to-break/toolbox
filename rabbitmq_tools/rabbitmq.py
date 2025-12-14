@@ -29,13 +29,16 @@ class RabbitBase:
 
 
 class RabbitProducer(RabbitBase):
-    def __init__(self, logger: logging.Logger, uri: str, exchange: str, key: str):
+    def __init__(self, logger: logging.Logger, uri: str, exchange: str, key: str, heartbeat_interval: int = 5):
         super().__init__(logger, uri)
 
         self.routing_key = key
         self.exchange = exchange
 
         self._lock = threading.Lock()
+
+        self.heartbeat_interval = heartbeat_interval
+        self._stop_heartbeat = threading.Event()
 
     def connect(self, delay_seconds: int = 3):
         while True:
@@ -44,6 +47,13 @@ class RabbitProducer(RabbitBase):
 
                 self.connection = pika.BlockingConnection(self.parameters)
                 self.channel = self.connection.channel()
+
+                self._stop_heartbeat.clear()
+                threading.Thread(
+                    target=self._heartbeat_loop,
+                    daemon=True
+                ).start()
+
 
                 self.l.info(
                     f"Successfully connected producer to exchange '{self.exchange}' "
@@ -86,6 +96,15 @@ class RabbitProducer(RabbitBase):
                 except Exception as e2:
                     self.l.error(f"Retry failed: {e2}")
                     return False
+
+    def _heartbeat_loop(self):
+        while not self._stop_heartbeat.is_set():
+            try:
+                if self.connection and self.connection.is_open:
+                    self.connection.process_data_events(time_limit=1)
+            except Exception as e:
+                self.l.error(f"Producer heartbeat error: {e}")
+            time.sleep(self.heartbeat_interval)
 
 
 class RabbitConsumer(RabbitBase):
