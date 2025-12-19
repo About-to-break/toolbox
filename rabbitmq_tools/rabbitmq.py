@@ -48,23 +48,33 @@ class RabbitProducer(RabbitBase):
                 self.l.error(f"[producer] connect error: {e}")
                 time.sleep(delay_seconds)
 
-    def publish(self, body: Union[bytes, str]) -> bool:
-        try:
-            self._ensure_connected()
-            self.channel.basic_publish(
-                exchange=self.exchange,
-                routing_key=self.routing_key,
-                body=body,
-            )
-            return True
-        except pika.exceptions.AMQPError as e:
-            self.l.error(f"[producer] publish failed: {e}")
+    def publish(self, body: Union[bytes, str], retries: int = 3) -> bool:
+        for attempt in range(1, retries + 1):
             try:
-                if self.connection and not self.connection.is_closed:
-                    self.connection.close()
-            except Exception:
-                pass
-            return False
+                self._ensure_connected()
+                self.channel.basic_publish(
+                    exchange=self.exchange,
+                    routing_key=self.routing_key,
+                    body=body,
+                )
+                return True
+
+            except pika.exceptions.AMQPError as e:
+                self.l.warning(
+                    f"[producer] publish attempt {attempt} failed: {e}"
+                )
+                try:
+                    if self.connection:
+                        self.connection.close()
+                except Exception:
+                    pass
+
+                self.connection = None
+                self.channel = None
+                time.sleep(1)
+
+        self.l.error("[producer] publish failed permanently")
+        return False
 
 
 # =========================
@@ -101,7 +111,9 @@ class RabbitConsumer(RabbitBase):
             try:
                 result = handler_func(body)
                 if extra_func is not None:
-                    extra_func(result)
+                    ok = extra_func(result)
+                    if not ok:
+                        raise Exception("[consumer] Extra callback functional failed")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             except Exception as e:
                 self.l.error(f"[consumer] handler error: {e}")
