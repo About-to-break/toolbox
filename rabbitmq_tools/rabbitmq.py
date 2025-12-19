@@ -91,15 +91,15 @@ class RabbitConsumer(RabbitBase):
 
     def consume(
         self,
-        handler: Callable[[bytes], object],
-        extra_func: Callable[[object], None] | None = None,
+        handler_func,
+        extra_func,
     ):
         self._ensure_connected()
 
         def _callback(ch, method, properties, body: bytes):
             self.l.debug(f"[consumer] received message")
             try:
-                result = handler(body)
+                result = handler_func(body)
                 if extra_func is not None:
                     extra_func(result)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
