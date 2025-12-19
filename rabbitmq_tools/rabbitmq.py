@@ -4,6 +4,9 @@ from typing import Callable, Union
 
 import pika
 
+class BadMessageStructureException(Exception):
+    pass
+
 
 class RabbitBase:
     def __init__(self, logger: logging.Logger, uri: str):
@@ -115,9 +118,15 @@ class RabbitConsumer(RabbitBase):
                     ok = extra_func(result)
                     if not ok:
                         raise Exception("[consumer] Extra callback functional failed")
+
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-            except Exception as e:
-                self.l.error(f"[consumer] handler error: {e}")
+            except BadMessageStructureException as e1:
+                self.l.warning(f"[consumer] Got a bad message! Skipping: {e1}")
+                # пропускаем
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            except Exception as e2:
+
+                self.l.error(f"[consumer] handler error: {e2}")
                 # сообщение вернётся в очередь
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
