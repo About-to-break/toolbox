@@ -57,6 +57,7 @@ class RabbitProducer(RabbitBase):
                     routing_key=self.routing_key,
                     body=body,
                 )
+                self.l.info("[producer] Successful publishing")
                 return True
 
             except pika.exceptions.AMQPError as e:
@@ -107,7 +108,7 @@ class RabbitConsumer(RabbitBase):
         self._ensure_connected()
 
         def _callback(ch, method, properties, body: bytes):
-            self.l.debug(f"[consumer] received message")
+            self.l.info(f"[consumer] received message")
             try:
                 result = handler_func(body)
                 if extra_func is not None:
